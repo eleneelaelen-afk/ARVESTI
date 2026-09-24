@@ -41,14 +41,12 @@ export default function AdminDashboard() {
   const [activeSection, setActiveSection] = useState<'requests' | 'attendance' | 'students' | 'drop_in' | 'debt'>('requests');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
 
-  // Supabase data state
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [students, setStudents] = useState<ProfileRow[]>([]);
   const [lessons, setLessons] = useState<LessonRow[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [dropIns, setDropIns] = useState<DropInRequestRow[]>([]);
 
-  // Fetch all admin data
   const fetchData = async () => {
     try {
       const [groupsRes, studentsRes, lessonsRes, attendanceRes, dropInsRes] = await Promise.all([
@@ -62,7 +60,6 @@ export default function AdminDashboard() {
       if (groupsRes.data && groupsRes.data.length > 0) {
         setGroups(groupsRes.data as GroupRow[]);
       } else {
-        // Fallback groups
         setGroups([
           { id: 'grp-1', name: 'ARVESTI 1.0', age_category: 'Старшая группа', schedule: 'Чт, Сб', time: '19:00 - 20:30', days_of_week: ['Чт', 'Сб'] },
           { id: 'grp-2', name: 'ARVESTI 2.0', age_category: 'Старшая группа', schedule: 'Сб, Вс', time: '17:00 - 18:30', days_of_week: ['Сб', 'Вс'] },
@@ -74,7 +71,6 @@ export default function AdminDashboard() {
       if (studentsRes.data && studentsRes.data.length > 0) {
         setStudents(studentsRes.data as ProfileRow[]);
       } else {
-        // Fallback demo students
         setStudents([
           { id: 'demo-1', full_name: 'Мадина Карданова', phone: '+7 (928) 111-22-33', role: 'student', group_id: 'grp-1', account_type: 'subscription', payment_status: 'paid', status: 'active', payment_due_date: '31.10.2026', created_at: new Date().toISOString() },
           { id: 'demo-2', full_name: 'Амина Гаджиева', phone: '+7 (928) 222-33-44', role: 'student', group_id: 'grp-2', account_type: 'subscription', payment_status: 'overdue', status: 'active', payment_due_date: '27.10.2026', created_at: new Date().toISOString() },
@@ -86,7 +82,6 @@ export default function AdminDashboard() {
       if (attendanceRes.data) setAttendance(attendanceRes.data as AttendanceRow[]);
       if (dropInsRes.data) setDropIns(dropInsRes.data as DropInRequestRow[]);
     } catch {
-      // Continue with available state
     } finally {
       setLoading(false);
     }
@@ -158,7 +153,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Pending registrations
   const pendingRequests = useMemo(() => {
     const list = students.filter((s) => s.status === 'pending');
     const seen = new Set<string>();
@@ -169,7 +163,6 @@ export default function AdminDashboard() {
     });
   }, [students]);
 
-  // Filtered students by group
   const activeStudents = useMemo(() => {
     return students.filter((s) => s.status === 'active');
   }, [students]);
@@ -179,7 +172,6 @@ export default function AdminDashboard() {
     return activeStudents.filter((s) => s.group_id === selectedGroupId);
   }, [activeStudents, selectedGroupId]);
 
-  // Actions
   const handleApproveStudent = async (studentId: string, assignedGroupId?: string) => {
     const targetGroup = assignedGroupId || 'grp-1';
     setStudents((prev) =>
@@ -231,7 +223,6 @@ export default function AdminDashboard() {
     );
   }
 
-  // If currently authenticated as a student
   if (isStudentUser) {
     return (
       <div className="max-w-md mx-auto my-16 p-8 rounded-3xl border border-neutral-800 bg-neutral-900/90 text-center space-y-5 shadow-2xl">
@@ -254,7 +245,6 @@ export default function AdminDashboard() {
     );
   }
 
-  // If not authorized as admin yet, show password prompt
   if (!isAdminAuthorized) {
     return (
       <div className="max-w-md mx-auto my-16 p-8 rounded-3xl border border-neutral-800 bg-neutral-900/90 space-y-6 shadow-2xl">
@@ -307,7 +297,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto py-2">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-800">
         <div>
           <div className="flex items-center gap-2">
@@ -321,7 +310,6 @@ export default function AdminDashboard() {
           </p>
         </div>
 
-        {/* Master Group Selector Dropdown */}
         <div className="flex items-center gap-2 text-xs">
           <Filter className="w-3.5 h-3.5 text-white" />
           <span className="text-neutral-400">Состав:</span>
@@ -340,7 +328,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <button
           onClick={() => setActiveSection('requests')}
@@ -408,7 +395,6 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {/* 1. REGISTRATION REQUESTS SECTION */}
       {activeSection === 'requests' && (
         <div className="p-6 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
@@ -470,12 +456,10 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 2. ATTENDANCE & RECHARTS ANALYTICS */}
       {activeSection === 'attendance' && (
         <div className="space-y-6">
           <AttendanceCharts groups={groups} />
 
-          {/* Lessons list */}
           <div className="p-6 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <CalendarCheck className="w-4 h-4 text-white" />
@@ -500,7 +484,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 3. ACTIVE STUDENTS LIST */}
       {activeSection === 'students' && (
         <div className="p-6 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
@@ -549,7 +532,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 4. DROP-IN VISITS */}
       {activeSection === 'drop_in' && (
         <div className="p-6 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-4">
           <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -592,7 +574,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 5. DEBTS & SUBSCRIPTIONS */}
       {activeSection === 'debt' && (
         <div className="p-6 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-4">
           <h2 className="text-base font-bold text-white flex items-center gap-2">
