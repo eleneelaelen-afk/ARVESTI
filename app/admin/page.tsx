@@ -62,21 +62,23 @@ export default function AdminDashboard() {
       if (groupsRes.data && groupsRes.data.length > 0) {
         setGroups(groupsRes.data as GroupRow[]);
       } else {
+        // Fallback groups
         setGroups([
-          { id: 'grp-1', name: 'ARVESTI 1.0', age_category: 'Старшая группа', schedule: 'Чт, Сб', time: '19:00 - 20:30', max_capacity: 18, is_active: true },
-          { id: 'grp-2', name: 'ARVESTI 2.0', age_category: 'Старшая группа', schedule: 'Сб, Вс', time: '17:00 - 18:30', max_capacity: 18, is_active: true },
-          { id: 'grp-3', name: 'ARVESTI 3.0', age_category: 'Младшая группа', schedule: 'Сб, Вс', time: '14:00 - 15:30', max_capacity: 15, is_active: true },
-          { id: 'grp-4', name: 'ARVESTI 4.0', age_category: 'Младшая группа', schedule: 'Сб, Вс', time: '15:30 - 17:00', max_capacity: 15, is_active: true },
+          { id: 'grp-1', name: 'ARVESTI 1.0', age_category: 'Старшая группа', schedule: 'Чт, Сб', time: '19:00 - 20:30', days_of_week: ['Чт', 'Сб'] },
+          { id: 'grp-2', name: 'ARVESTI 2.0', age_category: 'Старшая группа', schedule: 'Сб, Вс', time: '17:00 - 18:30', days_of_week: ['Сб', 'Вс'] },
+          { id: 'grp-3', name: 'ARVESTI 3.0', age_category: 'Младшая группа', schedule: 'Сб, Вс', time: '14:00 - 15:30', days_of_week: ['Сб', 'Вс'] },
+          { id: 'grp-4', name: 'ARVESTI 4.0', age_category: 'Младшая группа', schedule: 'Сб, Вс', time: '15:30 - 17:00', days_of_week: ['Сб', 'Вс'] },
         ]);
       }
 
       if (studentsRes.data && studentsRes.data.length > 0) {
         setStudents(studentsRes.data as ProfileRow[]);
       } else {
+        // Fallback demo students
         setStudents([
           { id: 'demo-1', full_name: 'Мадина Карданова', phone: '+7 (928) 111-22-33', role: 'student', group_id: 'grp-1', account_type: 'subscription', payment_status: 'paid', status: 'active', payment_due_date: '31.10.2026', created_at: new Date().toISOString() },
           { id: 'demo-2', full_name: 'Амина Гаджиева', phone: '+7 (928) 222-33-44', role: 'student', group_id: 'grp-2', account_type: 'subscription', payment_status: 'overdue', status: 'active', payment_due_date: '27.10.2026', created_at: new Date().toISOString() },
-          { id: 'demo-3', full_name: 'Диана Алиева', phone: '+7 (928) 333-44-55', role: 'student', group_id: 'grp-1', account_type: 'subscription', payment_status: 'paid', status: 'pending', notes: 'Заявка на вступление в группу ARVESTI 1.0', created_at: new Date().toISOString() },
+          { id: 'demo-3', full_name: 'Диана Алиева', phone: '+7 (928) 333-44-55', role: 'student', group_id: 'grp-1', account_type: 'subscription', payment_status: 'paid', status: 'pending', payment_due_date: '31.10.2026', notes: 'Заявка на вступление в группу ARVESTI 1.0', created_at: new Date().toISOString() },
         ]);
       }
 
