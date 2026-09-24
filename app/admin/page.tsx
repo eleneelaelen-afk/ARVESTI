@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '../lib/supabase/client';
+import { createClient } from '../../lib/supabase/client';
 import { Phone, Lock, User, CheckCircle2, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 
