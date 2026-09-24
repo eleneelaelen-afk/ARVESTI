@@ -1,431 +1,488 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '../../lib/supabase/client';
-import { Phone, Lock, User, CheckCircle2, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { createClient } from '../../lib/supabase/client';
+import {
+  Users,
+  UserPlus,
+  CalendarCheck,
+  CreditCard,
+  Inbox,
+  Check,
+  X,
+  CheckCircle2,
+  BarChart3,
+  Filter,
+  Shield,
+  Lock,
+  AlertCircle,
+} from 'lucide-react';
+import { AttendanceCharts } from '../../components/AttendanceCharts';
+import {
+  ProfileRow,
+  GroupRow,
+  LessonRow,
+  AttendanceRow,
+  DropInRequestRow,
+} from '../../types/database';
 
-export default function HomePage() {
+export default function AdminDashboard() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [mode, setMode] = useState<'login' | 'register' | 'admin'>('login');
-  const [phone, setPhone] = useState('+7 ');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState('grp-1');
-  const [accountType, setAccountType] = useState<'subscription' | 'drop_in'>('subscription');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [isAdminAuthorized, setIsAdminAuthorized] = useState(false);
+  const [isStudentUser, setIsStudentUser] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [authError, setAuthError] = useState('');
 
-  // Admin credentials
-  const ADMIN_PHONE = '+7 (903) 440-04-56';
-  const ADMIN_CLEAN = '79034400456';
-  const ADMIN_EMAIL = 'admin@arvesti.dance';
-  const VALID_ADMIN_PASSWORDS = ['ArvestiAdmin2026!', 'admin123456'];
+  const [activeSection, setActiveSection] = useState<'requests' | 'attendance' | 'students' | 'drop_in' | 'debt'>('requests');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
 
-  const formatPhoneNumber = (val: string) => {
-    let clean = val.replace(/\D/g, '');
-    if (!clean.startsWith('7')) clean = '7' + clean;
-    clean = clean.slice(0, 11);
+  // Supabase data state
+  const [groups, setGroups] = useState<GroupRow[]>([]);
+  const [students, setStudents] = useState<ProfileRow[]>([]);
+  const [lessons, setLessons] = useState<LessonRow[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
+  const [dropIns, setDropIns] = useState<DropInRequestRow[]>([]);
 
-    let res = '+7';
-    if (clean.length > 1) res += ' (' + clean.slice(1, 4);
-    if (clean.length >= 4) res += ') ' + clean.slice(4, 7);
-    if (clean.length >= 7) res += '-' + clean.slice(7, 9);
-    if (clean.length >= 9) res += '-' + clean.slice(9, 11);
-    return res;
-  };
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    if (val.length < 3) {
-      setPhone('+7 ');
-      return;
-    }
-    setPhone(formatPhoneNumber(val));
-  };
-
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrorMsg('');
-    setSuccessMsg('');
-
-    const cleanDigits = phone.replace(/\D/g, '');
-
-    // Check if logging in as Admin
-    const isAdminAttempt = mode === 'admin' || cleanDigits === ADMIN_CLEAN;
-
-    if (isAdminAttempt) {
-      const isPasswordValid = VALID_ADMIN_PASSWORDS.includes(password.trim());
-
-      if (!isPasswordValid) {
-        setErrorMsg('Неверный пароль администратора. Доступ разрешён только руководителю.');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: ADMIN_EMAIL,
-          password: password.trim(),
-        });
-
-        if (error) {
-          const { data: signUpData } = await supabase.auth.signUp({
-            email: ADMIN_EMAIL,
-            password: password.trim(),
-          });
-
-          if (signUpData?.user) {
-            await supabase.from('profiles').upsert({
-              id: signUpData.user.id,
-              phone: ADMIN_PHONE,
-              full_name: 'Линда Азизян (Руководитель)',
-              role: 'admin',
-              status: 'active',
-              payment_status: 'paid',
-            });
-          }
-        } else if (data?.user) {
-          await supabase.from('profiles').upsert({
-            id: data.user.id,
-            phone: ADMIN_PHONE,
-            full_name: 'Линда Азизян (Руководитель)',
-            role: 'admin',
-            status: 'active',
-            payment_status: 'paid',
-          });
-        }
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('arvesti_admin_authorized', 'true');
-        }
-
-        router.push('/admin');
-        return;
-      } catch {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('arvesti_admin_authorized', 'true');
-        }
-        router.push('/admin');
-        return;
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    // Student Login or Registration
-    if (cleanDigits.length < 11) {
-      setErrorMsg('Пожалуйста, введите полный номер телефона (11 цифр).');
-      setLoading(false);
-      return;
-    }
-
-    const virtualEmail = `${cleanDigits}@arvesti.dance`;
-
+  // Fetch all admin data
+  const fetchData = async () => {
     try {
-      if (mode === 'login') {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: virtualEmail,
-          password,
-        });
+      const [groupsRes, studentsRes, lessonsRes, attendanceRes, dropInsRes] = await Promise.all([
+        supabase.from('groups').select('*').order('id'),
+        supabase.from('profiles').select('*').eq('role', 'student').order('created_at', { ascending: false }),
+        supabase.from('lessons').select('*').order('date', { ascending: false }).limit(20),
+        supabase.from('attendance').select('*'),
+        supabase.from('drop_in_requests').select('*').order('created_at', { ascending: false }),
+      ]);
 
-        if (error) {
-          throw new Error('Неверный номер телефона или пароль. Проверьте данные или зарегистрируйтесь.');
-        }
-
-        if (data.user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role, status')
-            .eq('id', data.user.id)
-            .single();
-
-          if (profile?.status === 'pending') {
-            setErrorMsg('Ваша заявка на регистрацию ожидает подтверждения администратором.');
-            await supabase.auth.signOut();
-            return;
-          }
-
-          if (profile?.role === 'admin') {
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('arvesti_admin_authorized', 'true');
-            }
-            router.push('/admin');
-          } else {
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('arvesti_admin_authorized');
-            }
-            router.push('/student');
-          }
-        }
+      if (groupsRes.data && groupsRes.data.length > 0) {
+        setGroups(groupsRes.data as GroupRow[]);
       } else {
-        // Registration
-        if (!fullName.trim()) throw new Error('Пожалуйста, укажите имя и фамилию');
-
-        const { data, error } = await supabase.auth.signUp({
-          email: virtualEmail,
-          password,
-        });
-
-        if (error) throw error;
-
-        if (data.user) {
-          const { error: profileErr } = await supabase.from('profiles').insert({
-            id: data.user.id,
-            phone,
-            full_name: fullName.trim(),
-            role: 'student',
-            group_id: selectedGroup,
-            account_type: accountType,
-            payment_status: 'paid',
-            status: 'pending',
-            notes: `Самостоятельная регистрация (${accountType === 'subscription' ? 'Абонемент' : 'Разовые'})`,
-          });
-
-          if (profileErr) throw profileErr;
-
-          setSuccessMsg('Заявка успешно отправлена! Ожидайте подтверждения от администратора.');
-          setMode('login');
-        }
+        setGroups([
+          { id: 'grp-1', name: 'ARVESTI 1.0', age_category: 'Старшая группа', schedule: 'Чт, Сб', time: '19:00 - 20:30', days_of_week: ['Чт', 'Сб'] },
+          { id: 'grp-2', name: 'ARVESTI 2.0', age_category: 'Старшая группа', schedule: 'Сб, Вс', time: '17:00 - 18:30', days_of_week: ['Сб', 'Вс'] },
+          { id: 'grp-3', name: 'ARVESTI 3.0', age_category: 'Младшая группа', schedule: 'Сб, Вс', time: '14:00 - 15:30', days_of_week: ['Сб', 'Вс'] },
+          { id: 'grp-4', name: 'ARVESTI 4.0', age_category: 'Младшая группа', schedule: 'Сб, Вс', time: '15:30 - 17:00', days_of_week: ['Сб', 'Вс'] },
+        ]);
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Произошла ошибка при авторизации.');
+
+      if (studentsRes.data && studentsRes.data.length > 0) {
+        setStudents(studentsRes.data as ProfileRow[]);
+      } else {
+        setStudents([
+          { id: 'demo-1', full_name: 'Мадина Карданова', phone: '+7 (928) 111-22-33', role: 'student', group_id: 'grp-1', account_type: 'subscription', payment_status: 'paid', status: 'active', payment_due_date: '31.10.2026', created_at: new Date().toISOString() },
+          { id: 'demo-2', full_name: 'Амина Гаджиева', phone: '+7 (928) 222-33-44', role: 'student', group_id: 'grp-2', account_type: 'subscription', payment_status: 'overdue', status: 'active', payment_due_date: '27.10.2026', created_at: new Date().toISOString() },
+          { id: 'demo-3', full_name: 'Диана Алиева', phone: '+7 (928) 333-44-55', role: 'student', group_id: 'grp-1', account_type: 'subscription', payment_status: 'paid', status: 'pending', payment_due_date: '31.10.2026', notes: 'Заявка на вступление в группу ARVESTI 1.0', created_at: new Date().toISOString() },
+        ]);
+      }
+
+      if (lessonsRes.data && lessonsRes.data.length > 0) setLessons(lessonsRes.data as LessonRow[]);
+      if (attendanceRes.data) setAttendance(attendanceRes.data as AttendanceRow[]);
+      if (dropInsRes.data) setDropIns(dropInsRes.data as DropInRequestRow[]);
+    } catch {
+      // Continue
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="space-y-10 py-6">
-      {/* Title */}
-      <section className="text-center space-y-3 max-w-2xl mx-auto">
-        <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white uppercase">
-          ARVESTI
-        </h1>
-        <p className="text-neutral-400 text-sm sm:text-base font-normal">
-          Студия кавказских танцев в Пятигорске • ТРЦ «Арбат», Октябрьская ул., 17
-        </p>
-      </section>
+  useEffect(() => {
+    async function checkAuthAndFetch() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const localAdmin = typeof window !== 'undefined' && localStorage.getItem('arvesti_admin_authorized') === 'true';
 
-      {/* Auth Card */}
-      <div className="max-w-md mx-auto p-6 sm:p-8 rounded-3xl border border-neutral-800 bg-neutral-900/90 shadow-2xl space-y-6">
-        {mode !== 'admin' ? (
-          <div className="flex p-1 rounded-2xl bg-neutral-950 border border-neutral-800 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => { setMode('login'); setErrorMsg(''); setSuccessMsg(''); }}
-              className={`flex-1 py-2.5 rounded-xl transition-all cursor-pointer ${
-                mode === 'login' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              Вход
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMode('register'); setErrorMsg(''); setSuccessMsg(''); }}
-              className={`flex-1 py-2.5 rounded-xl transition-all cursor-pointer ${
-                mode === 'register' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              Регистрация
-            </button>
-          </div>
-        ) : (
-          <div className="text-center space-y-1 pb-1">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-950 text-white border border-neutral-800 text-[11px] font-bold">
-              <Lock className="w-3 h-3 text-white" />
-              <span>Панель руководителя</span>
-            </div>
-            <h2 className="text-base font-bold text-white pt-1">Вход для руководителя студии</h2>
-            <p className="text-[11px] text-neutral-400">Линда Азизян (авторизация с правами администратора)</p>
-          </div>
-        )}
+        if (user) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
 
-        {/* Alerts */}
-        {errorMsg && (
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
+          if (prof?.role === 'student' && !localAdmin) {
+            setIsStudentUser(true);
+            setIsAdminAuthorized(false);
+            setLoading(false);
+            return;
+          }
 
-        {successMsg && (
-          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{successMsg}</span>
-          </div>
-        )}
+          if (prof?.role === 'admin' || localAdmin) {
+            setIsAdminAuthorized(true);
+            await fetchData();
+            return;
+          }
+        }
 
-        {/* Form */}
-        <form onSubmit={handleAuth} className="space-y-4 text-xs">
-          {mode === 'register' && (
-            <div>
-              <label className="block text-neutral-300 font-semibold mb-1">Имя Фамилия ученицы</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  placeholder="Имя Фамилия"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 pl-9 text-white placeholder-neutral-500 focus:outline-none focus:border-white"
-                />
-                <User className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
-              </div>
+        if (localAdmin) {
+          setIsAdminAuthorized(true);
+          await fetchData();
+          return;
+        }
+
+        setIsAdminAuthorized(false);
+      } catch {
+        const localAdmin = typeof window !== 'undefined' && localStorage.getItem('arvesti_admin_authorized') === 'true';
+        if (localAdmin) {
+          setIsAdminAuthorized(true);
+          await fetchData();
+        } else {
+          setIsAdminAuthorized(false);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    checkAuthAndFetch();
+  }, [supabase]);
+
+  const handleVerifyAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const pass = adminPasswordInput.trim();
+    if (pass === 'ArvestiAdmin2026!' || pass === 'admin123456') {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('arvesti_admin_authorized', 'true');
+      }
+      setIsAdminAuthorized(true);
+      setAuthError('');
+      await fetchData();
+    } else {
+      setAuthError('Неверный пароль администратора студии.');
+    }
+  };
+
+  // Actions
+  const handleApproveStudent = async (studentId: string) => {
+    await supabase.from('profiles').update({ status: 'active' }).eq('id', studentId);
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, status: 'active' } : s));
+  };
+
+  const handleRejectStudent = async (studentId: string) => {
+    await supabase.from('profiles').update({ status: 'inactive' }).eq('id', studentId);
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, status: 'inactive' } : s));
+  };
+
+  const handleTogglePaymentStatus = async (studentId: string, current: string) => {
+    const next = current === 'paid' ? 'overdue' : 'paid';
+    await supabase.from('profiles').update({ payment_status: next }).eq('id', studentId);
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, payment_status: next } : s));
+  };
+
+  const handleApproveDropIn = async (requestId: string) => {
+    await supabase.from('drop_in_requests').update({ status: 'approved' }).eq('id', requestId);
+    setDropIns(prev => prev.map(d => d.id === requestId ? { ...d, status: 'approved' } : d));
+  };
+
+  const handleRejectDropIn = async (requestId: string) => {
+    await supabase.from('drop_in_requests').update({ status: 'rejected' }).eq('id', requestId);
+    setDropIns(prev => prev.map(d => d.id === requestId ? { ...d, status: 'rejected' } : d));
+  };
+
+  // Filtered lists
+  const pendingStudents = useMemo(() => students.filter(s => s.status === 'pending'), [students]);
+  const activeStudents = useMemo(() => students.filter(s => s.status === 'active'), [students]);
+  const debtors = useMemo(() => students.filter(s => s.payment_status === 'overdue'), [students]);
+
+  const filteredStudents = useMemo(() => {
+    if (selectedGroupId === 'all') return activeStudents;
+    return activeStudents.filter(s => s.group_id === selectedGroupId);
+  }, [activeStudents, selectedGroupId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-center space-y-2">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs text-neutral-400">Загрузка панели управления студией...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Access check
+  if (!isAdminAuthorized) {
+    return (
+      <div className="max-w-md mx-auto py-12 px-4">
+        <div className="p-8 rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl text-center space-y-6">
+          <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center mx-auto text-white">
+            <Lock className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-white">Панель руководителя ARVESTI</h1>
+            <p className="text-xs text-neutral-400 mt-1">Доступ только для Линды Азизян</p>
+          </div>
+
+          {authError && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{authError}</span>
             </div>
           )}
 
-          <div>
-            <label className="block text-neutral-300 font-semibold mb-1">
-              {mode === 'admin' ? 'Телефон или логин руководителя' : 'Номер телефона'}
-            </label>
-            <div className="relative">
-              <input
-                type="tel"
-                required
-                placeholder="+7 (___) ___-__-__"
-                value={phone}
-                onChange={handlePhoneChange}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 pl-9 text-white placeholder-neutral-500 focus:outline-none focus:border-white font-mono"
-              />
-              <Phone className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-neutral-300 font-semibold mb-1">
-              {mode === 'admin' ? 'Пароль администратора' : 'Пароль'}
-            </label>
-            <div className="relative">
+          <form onSubmit={handleVerifyAdmin} className="space-y-4 text-left">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-300 mb-1">Пароль руководителя</label>
               <input
                 type="password"
                 required
-                placeholder={mode === 'admin' ? 'Введите пароль руководителя' : 'Введите пароль'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 pl-9 text-white placeholder-neutral-500 focus:outline-none focus:border-white"
+                placeholder="Введите пароль администратора"
+                value={adminPasswordInput}
+                onChange={(e) => setAdminPasswordInput(e.target.value)}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-white"
               />
-              <Lock className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
             </div>
-          </div>
-
-          {mode === 'register' && (
-            <div className="space-y-3 pt-1">
-              <div>
-                <label className="block text-neutral-300 font-semibold mb-1">Группа обучения</label>
-                <select
-                  value={selectedGroup}
-                  onChange={(e) => setSelectedGroup(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 px-3 text-white focus:outline-none focus:border-white"
-                >
-                  <option value="grp-1">ARVESTI 1.0 (Старшая, Чт/Сб)</option>
-                  <option value="grp-2">ARVESTI 2.0 (Старшая, Сб/Вс)</option>
-                  <option value="grp-3">ARVESTI 3.0 (Младшая, Сб/Вс)</option>
-                  <option value="grp-4">ARVESTI 4.0 (Младшая, Сб/Вс)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-neutral-300 font-semibold mb-1">Тип посещений</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAccountType('subscription')}
-                    className={`py-2 px-3 rounded-xl border text-center font-medium transition-all cursor-pointer ${
-                      accountType === 'subscription'
-                        ? 'border-white bg-white text-black font-bold'
-                        : 'border-neutral-800 bg-neutral-950 text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    Абонемент
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAccountType('drop_in')}
-                    className={`py-2 px-3 rounded-xl border text-center font-medium transition-all cursor-pointer ${
-                      accountType === 'drop_in'
-                        ? 'border-white bg-white text-black font-bold'
-                        : 'border-neutral-800 bg-neutral-950 text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    Разовые визиты
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 px-4 rounded-xl bg-white hover:bg-neutral-200 text-black font-black text-sm transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
-          >
-            {loading ? (
-              <span>Проверка данных...</span>
-            ) : mode === 'login' ? (
-              <>
-                <span>Войти в кабинет</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            ) : mode === 'register' ? (
-              <>
-                <span>Зарегистрироваться</span>
-                <ShieldCheck className="w-4 h-4" />
-              </>
-            ) : (
-              <>
-                <span>Войти как руководитель</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Discreet Admin Entry & Rules */}
-        <div className="pt-2 text-center text-xs space-y-3">
-          {mode !== 'admin' ? (
             <button
-              type="button"
-              onClick={() => {
-                setMode('admin');
-                setErrorMsg('');
-                setSuccessMsg('');
-                setPassword('');
-                setPhone('+7 ');
-              }}
-              className="text-neutral-500 hover:text-neutral-300 text-[11px] flex items-center justify-center gap-1.5 mx-auto transition-colors cursor-pointer"
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-white hover:bg-neutral-200 text-black font-extrabold text-xs transition-colors cursor-pointer"
             >
-              <Lock className="w-3 h-3 text-neutral-500" />
-              <span>Вход для руководителя</span>
+              Подтвердить вход
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setMode('login');
-                setErrorMsg('');
-                setSuccessMsg('');
-                setPassword('');
-                setPhone('+7 ');
-              }}
-              className="text-neutral-400 hover:text-white text-[11px] flex items-center justify-center gap-1 mx-auto transition-colors cursor-pointer"
-            >
-              <span>← Вернуться ко входу для учениц</span>
-            </button>
-          )}
+          </form>
 
-          <div>
-            <Link href="/rules" className="text-neutral-400 hover:text-white underline text-[11px]">
-              Ознакомиться с правилами студии ARVESTI
-            </Link>
-          </div>
+          <Link href="/" className="inline-block text-xs text-neutral-500 hover:text-neutral-300">
+            ← Вернуться на главную
+          </Link>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 pb-12">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-800 pb-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-white" />
+            <h1 className="text-2xl font-black text-white">Кабинет руководителя ARVESTI</h1>
+          </div>
+          <p className="text-xs text-neutral-400 mt-1">
+            Линда Азизян • Управление группами, посещаемостью и абонементами
+          </p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-2 p-1.5 rounded-2xl bg-neutral-900 border border-neutral-800 text-xs font-semibold">
+        <button
+          onClick={() => setActiveSection('requests')}
+          className={`py-2 px-4 rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+            activeSection === 'requests'
+              ? 'bg-white text-black font-bold shadow'
+              : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          <Inbox className="w-4 h-4" />
+          <span>Заявки</span>
+          {pendingStudents.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-red-600 text-white text-[10px] font-black">
+              {pendingStudents.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveSection('attendance')}
+          className={`py-2 px-4 rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+            activeSection === 'attendance'
+              ? 'bg-white text-black font-bold shadow'
+              : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          <CalendarCheck className="w-4 h-4" />
+          <span>Журнал посещаемости</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('students')}
+          className={`py-2 px-4 rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+            activeSection === 'students'
+              ? 'bg-white text-black font-bold shadow'
+              : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Список учениц ({activeStudents.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('debt')}
+          className={`py-2 px-4 rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+            activeSection === 'debt'
+              ? 'bg-white text-black font-bold shadow'
+              : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          <span>Оплата и долги</span>
+          {debtors.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-red-600 text-white text-[10px] font-black">
+              {debtors.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* SECTION: REQUESTS */}
+      {activeSection === 'requests' && (
+        <div className="space-y-4">
+          <h2 className="text-base font-bold text-white">Входящие заявки на регистрацию</h2>
+          {pendingStudents.length === 0 ? (
+            <div className="p-8 rounded-2xl border border-neutral-800 bg-neutral-900/50 text-center">
+              <CheckCircle2 className="w-8 h-8 text-neutral-500 mx-auto mb-2" />
+              <p className="text-sm text-neutral-400">Нет новых заявок, ожидающих подтверждения.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {pendingStudents.map((st) => (
+                <div
+                  key={st.id}
+                  className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-sm">{st.full_name}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-neutral-800 text-neutral-300">
+                        {st.account_type === 'subscription' ? 'Абонемент' : 'Разовые'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-400 font-mono">{st.phone}</p>
+                    <p className="text-xs text-neutral-500">
+                      Группа: {groups.find(g => g.id === st.group_id)?.name || st.group_id}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleApproveStudent(st.id)}
+                      className="py-1.5 px-3 rounded-xl bg-white hover:bg-neutral-200 text-black font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Одобрить</span>
+                    </button>
+                    <button
+                      onClick={() => handleRejectStudent(st.id)}
+                      className="py-1.5 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                      <span>Отклонить</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SECTION: ATTENDANCE */}
+      {activeSection === 'attendance' && (
+        <div className="space-y-6">
+          <AttendanceCharts groups={groups} />
+        </div>
+      )}
+
+      {/* SECTION: STUDENTS */}
+      {activeSection === 'students' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-white">Список учениц</h2>
+            <select
+              value={selectedGroupId}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              className="bg-neutral-900 border border-neutral-800 rounded-xl py-1.5 px-3 text-xs text-white"
+            >
+              <option value="all">Все группы</option>
+              {groups.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-neutral-800 bg-neutral-900">
+            <table className="w-full text-left text-xs text-neutral-300">
+              <thead className="bg-neutral-950 text-neutral-400 font-semibold border-b border-neutral-800">
+                <tr>
+                  <th className="p-3.5">ФИО Ученицы</th>
+                  <th className="p-3.5">Телефон</th>
+                  <th className="p-3.5">Группа</th>
+                  <th className="p-3.5">Тип</th>
+                  <th className="p-3.5">Оплата</th>
+                  <th className="p-3.5 text-right">Действие</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800">
+                {filteredStudents.map((st) => (
+                  <tr key={st.id} className="hover:bg-neutral-800/40">
+                    <td className="p-3.5 font-bold text-white">{st.full_name}</td>
+                    <td className="p-3.5 font-mono text-neutral-400">{st.phone}</td>
+                    <td className="p-3.5">{groups.find(g => g.id === st.group_id)?.name || '—'}</td>
+                    <td className="p-3.5">
+                      <span className="px-2 py-0.5 rounded bg-neutral-800 text-[11px]">
+                        {st.account_type === 'subscription' ? 'Абонемент' : 'Разовые'}
+                      </span>
+                    </td>
+                    <td className="p-3.5">
+                      <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
+                        st.payment_status === 'paid'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-red-500/10 text-red-400 border border-red-500/30'
+                      }`}>
+                        {st.payment_status === 'paid' ? 'Оплачено' : 'Долг'}
+                      </span>
+                    </td>
+                    <td className="p-3.5 text-right">
+                      <button
+                        onClick={() => handleTogglePaymentStatus(st.id, st.payment_status)}
+                        className="py-1 px-2.5 rounded-lg border border-neutral-700 hover:border-white text-[11px] text-white transition-colors cursor-pointer"
+                      >
+                        Сменить статус
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION: DEBT */}
+      {activeSection === 'debt' && (
+        <div className="space-y-4">
+          <h2 className="text-base font-bold text-white">Список должников по абонементам</h2>
+          {debtors.length === 0 ? (
+            <div className="p-8 rounded-2xl border border-neutral-800 bg-neutral-900/50 text-center">
+              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+              <p className="text-sm text-neutral-300">Все абонементы оплачены в срок! Должников нет.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {debtors.map((st) => (
+                <div
+                  key={st.id}
+                  className="p-4 rounded-2xl border border-red-500/30 bg-red-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div>
+                    <p className="font-bold text-white text-sm">{st.full_name}</p>
+                    <p className="text-xs text-neutral-400 font-mono">{st.phone}</p>
+                    <p className="text-xs text-red-400 mt-1">Срок оплаты истёк ({st.payment_due_date || 'Конец месяца'})</p>
+                  </div>
+                  <button
+                    onClick={() => handleTogglePaymentStatus(st.id, st.payment_status)}
+                    className="py-1.5 px-3 rounded-xl bg-white hover:bg-neutral-200 text-black font-extrabold text-xs transition-colors cursor-pointer"
+                  >
+                    Отметить как оплачено
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
