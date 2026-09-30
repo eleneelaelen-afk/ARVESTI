@@ -111,68 +111,6 @@ export default function AdminPage() {
 
       if (rulesRes.data && rulesRes.data.length > 0) {
         setRules(rulesRes.data as StudioRuleSection[]);
-      } else {
-        setRules([
-          {
-            id: 1,
-            title: 'Оплата',
-            items: [
-              'Оплата вносится с 27-го по последнее число текущего месяца за следующий месяц.',
-              'К 1-му числу у всех уже должно быть всё оплачено, чтобы ваше место было за вами закреплено.',
-            ],
-            sort_order: 1,
-          },
-          {
-            id: 2,
-            title: 'Пропуски',
-            items: [
-              'Пропущенное занятие не переносится и не компенсируется (урок считается проведённым, так как педагог и зал были готовы).',
-            ],
-            sort_order: 2,
-          },
-          {
-            id: 3,
-            title: 'Предупреждение – это уважение',
-            items: [
-              'Если вы не придёте, пожалуйста, сообщите за 2 часа до начала занятия.',
-              'Я волнуюсь за каждого ученика, и это помогает мне скорректировать план урока.',
-            ],
-            sort_order: 3,
-          },
-          {
-            id: 4,
-            title: 'Если пропускаю я (педагог)',
-            items: [
-              'По болезни , отъезду или форс-мажору я обязательно проведу отработку или сделаю перерасчёт за этот урок.',
-            ],
-            sort_order: 4,
-          },
-          {
-            id: 5,
-            title: 'Опоздания',
-            items: [
-              'Пожалуйста, приходите заранее. Без разминки выходить на занятие травмоопасно.',
-            ],
-            sort_order: 5,
-          },
-          {
-            id: 6,
-            title: 'Поведение на уроке',
-            items: [
-              'На занятии мы работаем – разговоры, телефоны и жевательная резинка исключены.',
-              'Мы уважаем друг друга: я – педагог, вы – ученики. Доброжелательная и уважительная атмосфера – основа нашего творчества.',
-            ],
-            sort_order: 6,
-          },
-          {
-            id: 7,
-            title: 'Внешний вид',
-            items: [
-              'Форма одежды: Боди , лонгслив / лосины с юбкой либо штаны ( широкие, клеш ) / волосы собранные/ балетки.',
-            ],
-            sort_order: 7,
-          },
-        ]);
       }
     } catch (err: any) {
       console.warn('Ошибка загрузки:', err);
@@ -232,13 +170,25 @@ export default function AdminPage() {
     } catch {}
   };
 
+  // СОХРАНЕНИЕ ОТРЕДАКТИРОВАННОЙ УЧЕНИЦЫ (ИМЯ, ГРУППА, ТЕЛЕФОН, ЛОГИН, ОПЛАТА)
   const handleSaveStudentEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingStudent) return;
     setStudents((prev) => prev.map((s) => (s.id === editingStudent.id ? editingStudent : s)));
     try {
-      await supabase.from('profiles').update(editingStudent).eq('id', editingStudent.id);
-    } catch {}
+      await supabase.from('profiles').update({
+        full_name: editingStudent.full_name,
+        group_id: editingStudent.group_id,
+        phone: editingStudent.phone,
+        username: editingStudent.username,
+        payment_status: editingStudent.payment_status,
+        payment_due_date: editingStudent.payment_due_date,
+      }).eq('id', editingStudent.id);
+      setCancelNotice(`Данные ученицы ${editingStudent.full_name} успешно обновлены!`);
+      setTimeout(() => setCancelNotice(''), 4000);
+    } catch (err: any) {
+      alert('Ошибка сохранения: ' + err.message);
+    }
     setEditingStudent(null);
   };
 
@@ -301,7 +251,6 @@ export default function AdminPage() {
     } catch {}
   };
 
-  // ОТПРАВКА УВЕДОМЛЕНИЙ (ОБЩИЕ ИЛИ ПЕРСОНАЛЬНОЕ)
   const handleSendNotification = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!notifTitle.trim() || !notifMessage.trim()) return;
@@ -338,7 +287,6 @@ export default function AdminPage() {
     } catch {}
   };
 
-  // БЫСТРОЕ ПЕРСОНАЛЬНОЕ СООБЩЕНИЕ ИЗ СТРОКИ УЧЕНИЦЫ
   const handleSendQuickPersonal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!personalMsgStudent || !personalMsgText.trim()) return;
@@ -364,7 +312,6 @@ export default function AdminPage() {
     } catch {}
   };
 
-  // СОХРАНЕНИЕ НАСТРОЕК (АДРЕС, РАСПИСАНИЕ, ПРАВИЛА)
   const handleSaveSettings = async () => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('arvesti_studio_address', studioAddress);
@@ -696,7 +643,6 @@ export default function AdminPage() {
                         </span>
                       )}
 
-                      {/* Кнопка личного сообщения */}
                       <button
                         type="button"
                         onClick={() => { setPersonalMsgStudent(st); setPersonalMsgText(''); }}
@@ -707,7 +653,6 @@ export default function AdminPage() {
                         <span>Написать</span>
                       </button>
 
-                      {/* Отметки присутствия в зале */}
                       <div className="flex items-center gap-1 pl-1 border-l border-neutral-800">
                         <button
                           type="button"
@@ -742,7 +687,7 @@ export default function AdminPage() {
       )}
 
       {/* ============================================================ */}
-      {/* 2. УЧЕНИЦЫ (С ОТОДВИНУТОЙ КНОПКОЙ УДАЛЕНИЯ) */}
+      {/* 2. УЧЕНИЦЫ (РЕДАКТИРОВАНИЕ ИМЕНИ И ГРУППЫ) */}
       {/* ============================================================ */}
       {activeSection === 'students' && (
         <div className="p-5 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-4">
@@ -752,7 +697,7 @@ export default function AdminPage() {
                 <Users className="w-4 h-4" />
                 <span>Список учениц ({groupStudents.length})</span>
               </h2>
-              <p className="text-[11px] text-neutral-400">Управление абонементами и составом</p>
+              <p className="text-[11px] text-neutral-400">Нажмите ✏️ для смены группы или имени ученицы</p>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -776,61 +721,71 @@ export default function AdminPage() {
           </div>
 
           <div className="divide-y divide-neutral-800">
-            {groupStudents.map((std) => (
-              <div key={std.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>
-                  <span className="font-bold text-white text-sm">{std.full_name}</span>
-                  <p className="text-neutral-400 font-mono text-[11px]">{std.phone} • @{std.username}</p>
-                </div>
+            {groupStudents.map((std) => {
+              const currentGroup = groups.find((g) => g.id === std.group_id);
 
-                <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                  <button
-                    onClick={() => handleTogglePayment(std.id, std.payment_status)}
-                    className={`py-1 px-2.5 rounded-xl border font-bold text-[11px] cursor-pointer ${
-                      std.payment_status === 'paid'
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                        : 'bg-red-500/10 text-red-400 border-red-500/30'
-                    }`}
-                  >
-                    {std.payment_status === 'paid' ? 'Оплачен' : 'Долг'}
-                  </button>
+              return (
+                <div key={std.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-sm">{std.full_name}</span>
+                      <span className="px-2 py-0.5 rounded-md bg-neutral-800 text-neutral-300 font-bold text-[10px]">
+                        {currentGroup?.name || 'ARVESTI 1.0'}
+                      </span>
+                    </div>
+                    <p className="text-neutral-400 font-mono text-[11px]">{std.phone} • @{std.username}</p>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => { setPersonalMsgStudent(std); setPersonalMsgText(''); }}
-                    className="p-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300"
-                    title="Написать личное сообщение"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    onClick={() => setEditingStudent(std)}
-                    className="p-1.5 rounded-lg border border-neutral-800 text-neutral-400 hover:text-white"
-                    title="Редактировать"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* КНОПКА УДАЛЕНИЯ ОТОДВИНУТА ДАЛЬШЕ С БЕЗОПАСНЫМ РАЗДЕЛИТЕЛЕМ */}
-                  <div className="pl-3 ml-2 border-l border-neutral-800">
+                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
                     <button
-                      onClick={() => setStudentToDelete(std)}
-                      className="p-1.5 rounded-lg border border-red-500/20 bg-red-500/5 text-red-400/80 hover:text-red-400 hover:bg-red-500/20"
-                      title="Удалить ученицу"
+                      onClick={() => handleTogglePayment(std.id, std.payment_status)}
+                      className={`py-1 px-2.5 rounded-xl border font-bold text-[11px] cursor-pointer ${
+                        std.payment_status === 'paid'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : 'bg-red-500/10 text-red-400 border-red-500/30'
+                      }`}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {std.payment_status === 'paid' ? 'Оплачен' : 'Долг'}
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setPersonalMsgStudent(std); setPersonalMsgText(''); }}
+                      className="p-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300"
+                      title="Написать личное сообщение"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* КНОПКА РЕДАКТИРОВАНИЯ ИМЕНИ И ГРУППЫ */}
+                    <button
+                      onClick={() => setEditingStudent(std)}
+                      className="p-1.5 rounded-lg border border-neutral-700 bg-neutral-800 text-white hover:bg-neutral-700 font-bold flex items-center gap-1"
+                      title="Изменить имя, группу, телефон"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-[11px]">Изменить</span>
+                    </button>
+
+                    <div className="pl-3 ml-2 border-l border-neutral-800">
+                      <button
+                        onClick={() => setStudentToDelete(std)}
+                        className="p-1.5 rounded-lg border border-red-500/20 bg-red-500/5 text-red-400/80 hover:text-red-400 hover:bg-red-500/20"
+                        title="Удалить ученицу"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* ============================================================ */}
-      {/* 3. УВЕДОМЛЕНИЯ (ОБЩИЕ И ПЕРСОНАЛЬНЫЕ) */}
+      {/* 3. УВЕДОМЛЕНИЯ */}
       {/* ============================================================ */}
       {activeSection === 'notifications' && (
         <div className="p-5 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-4 text-xs">
@@ -846,7 +801,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* Быстрые 4 шаблона */}
           <div className="space-y-1.5">
             <label className="block text-[11px] font-semibold text-neutral-400">Шаблоны в 1 клик:</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -883,7 +837,7 @@ export default function AdminPage() {
 
           <form onSubmit={handleSendNotification} className="space-y-3">
             <div>
-              <label className="block text-neutral-400 mb-1">Кому отправить (все, группа или персонально):</label>
+              <label className="block text-neutral-400 mb-1">Кому отправить:</label>
               <select
                 value={notifTarget}
                 onChange={(e) => setNotifTarget(e.target.value)}
@@ -979,7 +933,7 @@ export default function AdminPage() {
       )}
 
       {/* ============================================================ */}
-      {/* 5. НАСТРОЙКИ СТУДИИ (АДРЕС, РАСПИСАНИЕ, ПРАВИЛА) */}
+      {/* 5. НАСТРОЙКИ СТУДИИ */}
       {/* ============================================================ */}
       {activeSection === 'settings' && (
         <div className="space-y-5 text-xs">
@@ -990,7 +944,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* Редактирование адреса */}
           <div className="p-5 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-3">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <MapPin className="w-4 h-4 text-white" />
@@ -1005,7 +958,6 @@ export default function AdminPage() {
             />
           </div>
 
-          {/* Редактирование расписания групп */}
           <div className="p-5 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-3">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Clock className="w-4 h-4 text-white" />
@@ -1051,7 +1003,6 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Редактирование правил */}
           <div className="p-5 rounded-3xl border border-neutral-800 bg-neutral-900/80 space-y-3">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Settings className="w-4 h-4 text-white" />
@@ -1096,7 +1047,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* НИЖНЯЯ ПАНЕЛЬ РАЗДЕЛОВ ДЛЯ АДМИНИСТРАТОРА (5 РАЗДЕЛОВ В СТРОКУ ВНИЗУ) */}
+      {/* НИЖНЯЯ ПАНЕЛЬ РАЗДЕЛОВ ДЛЯ АДМИНИСТРАТОРА */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-black/95 backdrop-blur-md border-t border-neutral-800 safe-bottom">
         <div className="max-w-lg mx-auto flex items-center justify-around h-16 px-1">
           <button
@@ -1159,7 +1110,112 @@ export default function AdminPage() {
         </div>
       </nav>
 
-      {/* Модальное окно личного сообщения ученице */}
+      {/* МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ УЧЕНИЦЫ (ИМЯ, ГРУППА, ТЕЛЕФОН, ОПЛАТА) */}
+      {editingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="w-full max-w-sm p-6 rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl space-y-3.5 text-xs">
+            <div className="flex items-center justify-between pb-2 border-b border-neutral-800">
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <Edit3 className="w-4 h-4 text-white" />
+                <span>Редактировать ученицу</span>
+              </h3>
+              <button onClick={() => setEditingStudent(null)} className="text-neutral-500 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStudentEdit} className="space-y-3">
+              <div>
+                <label className="block text-neutral-400 mb-1 font-semibold">ФИО Ученицы (Имя)</label>
+                <input
+                  type="text"
+                  required
+                  value={editingStudent.full_name}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, full_name: e.target.value })}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2 px-3 text-white focus:border-white focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-neutral-400 mb-1 font-semibold">Танцевальная группа</label>
+                <select
+                  value={editingStudent.group_id || 'grp-1'}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, group_id: e.target.value })}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2 px-3 text-white focus:border-white focus:outline-none cursor-pointer"
+                >
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name} ({g.age_category}, {g.time})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-neutral-400 mb-1 font-semibold">Телефон</label>
+                  <input
+                    type="text"
+                    value={editingStudent.phone}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, phone: e.target.value })}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-1.5 px-3 text-white font-mono focus:border-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-neutral-400 mb-1 font-semibold">Логин</label>
+                  <input
+                    type="text"
+                    value={editingStudent.username || ''}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, username: e.target.value })}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-1.5 px-3 text-white focus:border-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-neutral-400 mb-1 font-semibold">Статус оплаты</label>
+                  <select
+                    value={editingStudent.payment_status || 'paid'}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, payment_status: e.target.value as any })}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-1.5 px-2 text-white focus:border-white focus:outline-none cursor-pointer"
+                  >
+                    <option value="paid">Оплачен</option>
+                    <option value="overdue">Долг</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-neutral-400 mb-1 font-semibold">Срок абонемента</label>
+                  <input
+                    type="text"
+                    value={editingStudent.payment_due_date || 'до 31.10.2026'}
+                    onChange={(e) => setEditingStudent({ ...editingStudent, payment_due_date: e.target.value })}
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-1.5 px-3 text-white focus:border-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingStudent(null)}
+                  className="py-2 px-4 rounded-xl border border-neutral-700 text-neutral-300 font-semibold cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="py-2 px-5 rounded-xl bg-white hover:bg-neutral-200 text-black font-black cursor-pointer shadow"
+                >
+                  Сохранить
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно личного сообщения */}
       {personalMsgStudent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
           <div className="w-full max-w-sm p-6 rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl space-y-3.5 text-xs">
@@ -1221,59 +1277,6 @@ export default function AdminPage() {
                 Удалить
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Модальное окно редактирования ученицы */}
-      {editingStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
-          <div className="w-full max-w-sm p-6 rounded-3xl border border-neutral-800 bg-neutral-900 shadow-2xl space-y-3.5 text-xs">
-            <h3 className="text-sm font-bold text-white">Редактировать ученицу</h3>
-            <form onSubmit={handleSaveStudentEdit} className="space-y-3">
-              <div>
-                <label className="block text-neutral-400 mb-1">ФИО</label>
-                <input
-                  type="text"
-                  value={editingStudent.full_name}
-                  onChange={(e) => setEditingStudent({ ...editingStudent, full_name: e.target.value })}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-1.5 px-3 text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-neutral-400 mb-1">Телефон</label>
-                <input
-                  type="text"
-                  value={editingStudent.phone}
-                  onChange={(e) => setEditingStudent({ ...editingStudent, phone: e.target.value })}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-1.5 px-3 text-white font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-neutral-400 mb-1">Срок оплаты</label>
-                <input
-                  type="text"
-                  value={editingStudent.payment_due_date || 'до 31.10.2026'}
-                  onChange={(e) => setEditingStudent({ ...editingStudent, payment_due_date: e.target.value })}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-1.5 px-3 text-white"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingStudent(null)}
-                  className="py-1.5 px-3.5 rounded-xl border border-neutral-700 text-neutral-300"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="py-1.5 px-4 rounded-xl bg-white text-black font-bold"
-                >
-                  Сохранить
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
